@@ -26,6 +26,7 @@ Suggested layout (16-byte aligned):
 - i32 ofi
 - i32 mid_ret
 - u32 flags
+- `microprice`: fixed-point price with **MP_FRAC_BITS fractional bits** (default 8), i.e. `microprice_out = microprice * 2^MP_FRAC_BITS` after final rounding.
 
 ## Databento adapter responsibility (host side)
 - parse Databento records (MBP-1 / CMBP-1)

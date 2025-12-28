@@ -1,0 +1,54 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# C/C++
+build/
+*.o
+*.a
+*.so
+*.exe
+
+# Logs / outputs
+*.log
+*.tmp
+
+# Quartus / Intel FPGA
+db/
+incremental_db/
+output_files/
+*.qws
+*.qdf
+*.qsf.bak
+*.rpt
+*.sof
+*.pof
+*.jic
+*.smsg
+*.cdf
+*.qpf.bak
+
+# Platform Designer / Qsys
+*.qsys~
+*.qsys_edit
+*.qsys.bak
+
+# Simulation outputs
+work/
+vsim.wlf
+transcript
+*.vcd
+*.fst
+
+# Results raw dumps (keep curated plots/tables only)
+results/**/raw/
+

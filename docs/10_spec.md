@@ -2,29 +2,31 @@
 
 ## Input events (canonical fields)
 Each event in the canonical replay stream contains:
-- timestamp
+- timestamp `ts` (u64, **nanoseconds since epoch**)
 - bid price, ask price
 - bid size, ask size
 - trade price, trade size (0 if quote-only event)
 - trade side (buy/sell/unknown)
-- event type (quote update vs trade)
+- event type (quote update vs trade vs both)
 
 ## Output per time bucket
-One output record per bucket:
-- bucket timestamp (start or end; choose and keep consistent)
-- mid
-- spread
-- microprice
+One output record per bucket (fixed cadence):
+- `bucket_ts` (**bucket start timestamp**, locked)
+- `mid`
+- `spread`
+- `microprice`
 - rolling VWAP (over a defined rolling window)
 - OFI (L1 definition)
-- mid return over bucket
+- `mid_ret` (bucket return — locked definition below)
+
+Binary layouts and scaling live in `docs/30_io-format.md` and `docs/40_fixed-point.md`.
+
+---
 
 ## Bucket definition (LOCKED)
 
-This project uses **time-based buckets** aligned to the event timestamp (epoch time).
-
 ### Timestamp
-- `ts` is an **unsigned 64-bit integer** timestamp in **nanoseconds since epoch**.
+- `ts` is an unsigned 64-bit integer timestamp in **nanoseconds since epoch**.
 - The adapter (Databento → canonical events) is responsible for providing `ts` in ns.
 
 ### Bucket width
@@ -34,10 +36,13 @@ This project uses **time-based buckets** aligned to the event timestamp (epoch t
 ### Bucket ID
 For each event with timestamp `ts`:
 - `bucket_id = ts / BUCKET_NS` (integer division)
-- `bucket_ts = bucket_id * BUCKET_NS` (this is the bucket’s canonical timestamp)
+- `bucket_ts = bucket_id * BUCKET_NS` (**bucket start time**)
+
+### Bucket end time (for windowed stats)
+- `bucket_end_ts = bucket_ts + BUCKET_NS`
 
 ### Emission policy (fixed cadence)
-The system must emit **one output record per bucket** (fixed cadence). Buckets with no events are still emitted.
+The system must emit **one output record per bucket**. Buckets with no events are still emitted.
 
 Event-driven implementation rule:
 - Maintain `current_bucket_id`.
@@ -50,15 +55,30 @@ Event-driven implementation rule:
 
 ### Empty bucket behavior
 If a bucket contains **no events**:
-- `mid`, `spread`, `microprice`: **carry forward** the last known values
-- `vwap`: carry forward the last known rolling VWAP value (trade window unchanged)
+- `mid`, `spread`, `microprice`: **carry forward** last known values
+- `vwap`: carry forward last known rolling VWAP value (trade window unchanged)
 - `ofi_bucket`: `0`
-- `mid_ret_bucket`: `0` (since `mid_end == mid_prev_end`)
+- `mid_ret_bucket`: `0`
 
 ### Out-of-order timestamps (determinism)
 The canonical event stream must be **non-decreasing in `ts`**.
 - If `ts` decreases vs the previous event, the event is **dropped** and a counter increments:
   - `events_dropped_out_of_order += 1`
+
+---
+
+## Mid-price return over bucket (LOCKED, simple + deterministic)
+This project uses a **difference return** (not log, not percent) for Q1:
+
+- Let `mid_end(bucket)` be the final mid observed inside the bucket.  
+  - If the bucket had no events: `mid_end(bucket) = mid_end(prev_bucket)` (carry-forward).
+
+Then:
+- `mid_ret_bucket = mid_end(bucket) - mid_end(prev_bucket)`
+
+(You can add percent/log returns later as additional fields if desired.)
+
+---
 
 ## Order Flow Imbalance (OFI) — L1 (LOCKED)
 
@@ -82,124 +102,94 @@ Define the **ask contribution**:
 - Else if `a > a_prev`: `ofi_ask = +qa_prev`
 - Else (`a == a_prev`): `ofi_ask = +(qa_prev - qa)`
 
-Then the per-event OFI increment is:
+Then:
 - `ofi_event = ofi_bid + ofi_ask`
-
-The per-bucket OFI is the sum over all events in the bucket:
-- `ofi_bucket = Σ ofi_event` over events where `bucket_id(event) == bucket_id(bucket)`
-
-### Interpretation
-- Positive OFI ≈ net **buy pressure**
-  - bid improves or bid size increases at same bid
-  - ask worsens (moves up) or ask size decreases at same ask
-- Negative OFI ≈ net **sell pressure**
+- `ofi_bucket = Σ ofi_event` over events in the bucket
 
 ### Trade events
-- **Trades do not directly modify OFI**.
-- If an event contains both a trade and a quote update, OFI is computed from the quote delta as normal.
+- Trades do not directly modify OFI.
+- If an event contains both a trade and quote update, OFI is computed from quote delta as normal.
 
 ### Initialization
-OFI requires a valid previous book snapshot.
-- Until both sides have been initialized (`b_prev,a_prev,qb_prev,qa_prev` valid), set `ofi_event = 0`.
+- Until both sides have been initialized, set `ofi_event = 0`.
 - After initialization, update the stored previous snapshot after each processed event.
 
-### Edge rules
-- If `qb` or `qa` is zero, computations are still valid (OFI contributions may be 0).
+### Edge rules (LOCKED)
+- If `qb` or `qa` is zero, computations still proceed deterministically.
 - Locked/crossed market handling:
   - If `b >= a`, set `spread = 0` and clamp `microprice = mid` for that output record.
-  - OFI still follows the delta rules above (deterministic).
+  - OFI still follows the delta rules above.
+
+---
 
 ## VWAP — Time Window (LOCKED)
 
-We compute **rolling VWAP over the last `VWAP_T_MS` milliseconds**, based on **trade timestamps** (not quote timestamps). This VWAP is updated streaming and reported once per output bucket.
+We compute rolling VWAP over the last `VWAP_T_MS` milliseconds, based on **trade timestamps**.
 
 ### Parameters
-- `VWAP_T_MS`: configurable window length in milliseconds (Q1 recommended: 100–2000 ms).
-- `VWAP_T_NS = VWAP_T_MS * 1_000_000`.
-- Rolling window is evaluated at **bucket end time**:
+- `VWAP_T_MS`: configurable window length in ms (Q1 recommended: 100–2000 ms)
+- `VWAP_T_NS = VWAP_T_MS * 1_000_000`
+- Window evaluated at **bucket end time**:
   - `bucket_end_ts = bucket_ts + BUCKET_NS`
 
 ### Trade eligibility
-A trade with timestamp `ts_trade` is **included** in the VWAP window for a bucket if:
-
+A trade with timestamp `ts_trade` is included if:
 - `bucket_end_ts - VWAP_T_NS <= ts_trade < bucket_end_ts`
 
-Trades outside this interval are excluded.
-
 ### Definition
-Let the set of eligible trades in the window be `W`. Each trade has `(p_i, q_i)` (price, size).
-
-- `vwap = (Σ(p_i * q_i)) / (Σ q_i)` for all trades `i ∈ W`
+- `vwap = (Σ(p_i * q_i)) / (Σ q_i)` over eligible trades
 
 ### Streaming maintenance (implementation requirement)
-The system maintains the rolling VWAP using a **timestamped trade queue** and rolling sums:
+Maintain a timestamped trade FIFO and rolling sums:
+- `sum_pq = Σ(p_i * q_i)`
+- `sum_q  = Σ q_i`
 
-State:
-- `sum_pq = Σ(p_i * q_i)` over trades in the current window
-- `sum_q  = Σ q_i` over trades in the current window
-- a FIFO/ring of trades: `(ts_trade, p_i, q_i)` in non-decreasing `ts_trade`
+On each incoming trade:
+1. enqueue `(ts_trade, p, q)`
+2. `sum_pq += p*q`, `sum_q += q`
+3. evict while `ts_old < bucket_end_ts - VWAP_T_NS`:
+   - dequeue `(ts_old, p_old, q_old)`
+   - `sum_pq -= p_old*q_old`, `sum_q -= q_old`
 
-On each incoming trade event:
-1. Enqueue `(ts_trade, p, q)`
-2. Update `sum_pq += p*q`, `sum_q += q`
-3. Evict old trades while `ts_trade_old < (current_bucket_end_ts - VWAP_T_NS)`:
-   - Dequeue oldest trade `(ts_old, p_old, q_old)`
-   - Update `sum_pq -= p_old*q_old`, `sum_q -= q_old`
-
-Eviction must be deterministic and performed using strict inequality on the lower bound:
-- Evict trades with `ts_old < bucket_end_ts - VWAP_T_NS`
-- Keep trades with `ts_old == bucket_end_ts - VWAP_T_NS`
+Strict lower-bound rule:
+- evict `ts_old < (bucket_end_ts - VWAP_T_NS)`
+- keep `ts_old == (bucket_end_ts - VWAP_T_NS)`
 
 ### When VWAP is undefined
-If `sum_q == 0` (no eligible trades in the window):
-- `vwap` is set to **the last valid VWAP** (carry-forward).
-- Until the first valid VWAP exists, initialize:
-  - `vwap = mid` (current mid) once mid is initialized; otherwise `vwap = 0`.
+If `sum_q == 0`:
+- output `vwap = last_valid_vwap` (carry-forward)
+- until first valid vwap exists: initialize `vwap = mid` (once mid initialized), else `0`
 
-### Ordering and determinism constraints
-- Canonical event stream must be **non-decreasing in timestamp**.
-- Trade timestamps must be non-decreasing; if a trade arrives with `ts_trade < last_trade_ts`:
-  - drop the trade and increment `trades_dropped_out_of_order`.
+### Ordering constraints
+- Event timestamps must be non-decreasing.
+- Trade timestamps must be non-decreasing; otherwise drop + counter:
+  - `trades_dropped_out_of_order += 1`
 
-### Notes (explicitly out of scope here)
-- Price scaling/fixed-point format for `p` is defined in `docs/40_fixed-point.md` (TBD, frozen by end of Week 2).
-- Division/rounding policy for VWAP is defined in `docs/40_fixed-point.md` (TBD, frozen by end of Week 2).
+---
 
 ## Microprice — Output Format (LOCKED)
 
-Microprice is computed per event from top-of-book:
-
-\[
-microprice = \frac{ask \cdot bid\_size + bid \cdot ask\_size}{bid\_size + ask\_size}
-\]
+microprice = (ask * bid_size + bid * ask_size) / (bid_size + ask_size)
 
 ### Output precision
-Microprice is output as **fixed-point with fractional precision**, not snapped to ticks.
-
-- Let `PX_SCALE` be the integer scaling used for prices (TBD in `docs/40_fixed-point.md`).
-- Microprice output uses:
-  - integer base in `PX_SCALE`
-  - plus `MP_FRAC_BITS` fractional bits (default: `MP_FRAC_BITS = 8`, frozen by end of Week 2)
+Microprice is output as fixed-point with additional fractional bits:
+- base price scale `PX_SCALE` (defined in `docs/40_fixed-point.md`)
+- plus `MP_FRAC_BITS` (default 8; frozen by end of Week 2)
 
 Conceptually:
-- `microprice_out = round_nearest( microprice * 2^MP_FRAC_BITS )`
-
-### Rounding policy (for microprice only)
-- Use **round-to-nearest, ties-to-even** at the final microprice output step.
-- Intermediate products use full precision; rounding occurs only at output quantization.
+- `microprice_out = round_nearest_ties_to_even(microprice * 2^MP_FRAC_BITS)`
 
 ### Edge cases
-- If `bid_size + ask_size == 0`, set `microprice = mid` (if mid initialized), else `0`.
-- If the market is locked/crossed (`bid >= ask`), clamp:
+- If `bid_size + ask_size == 0`, set `microprice = mid` (if initialized), else `0`.
+- If locked/crossed (`bid >= ask`):
   - `spread = 0`
   - `microprice = mid`
 
-### Notes
-- Exact integer widths and overflow policy are defined in `docs/40_fixed-point.md` and frozen by end of Week 2.
-
+---
 
 ## Determinism requirements
-- fixed-point formats are frozen early and documented
-- rounding + overflow/saturation policy is explicit
-- handling of corner cases is defined (zero sizes, locked/crossed markets, missing trades)
+- fixed-point formats frozen early and documented
+- rounding + overflow/saturation policy explicit (in `docs/40_fixed-point.md`)
+- corner cases explicitly defined (zero sizes, locked/crossed, missing trades)
+- out-of-order timestamps dropped + counted
 

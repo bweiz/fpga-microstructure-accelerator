@@ -52,3 +52,23 @@ transcript
 # Results raw dumps (keep curated plots/tables only)
 results/**/raw/
 
+# Quartus build outputs
+hw/quartus/db/
+hw/quartus/incremental_db/
+hw/quartus/output_files/
+
+# Platform Designer generated system output
+hw/quartus/soc_system/
+hw/quartus/hps_isw_handoff/
+
+# Common Quartus generated junk
+*.rpt
+*.qmsg
+*.smsg
+*.jdi
+*.jic
+*.sof
+*.pof
+*.cdf
+*.bak
+

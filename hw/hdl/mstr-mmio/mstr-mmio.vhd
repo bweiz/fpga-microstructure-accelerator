@@ -25,19 +25,35 @@ use std.standard;
 
 entity mstr_mmio is
   port (
-    clk             : in std_logic;
-    rst             : in std_logic;
-    address         : in std_logic(5 downto 0);
-    avs_read        : in std_logic;
-    avs_write       : in std_logic;
-    avs_writedata   : in std_logic_vector(31 downto 0);
-    avs_readdata    : out std_logic_vector(31 downto 0);
-    byteenable      : in std_logic_vector(3 downto 0);
-       );
+    clk                   : in std_logic;
+    rst                   : in std_logic;
+    address               : in std_logic_vector(4 downto 0);
+    avs_read              : in std_logic;
+    avs_write             : in std_logic;
+    avs_writedata         : in std_logic_vector(31 downto 0);
+    avs_readdata          : out std_logic_vector(31 downto 0);
+    byteenable            : in std_logic_vector(3 downto 0);
+    cfg_bucket_ns         : out std_logic_vector(31 downto 0);
+    cfg_vwap_t_ns         : out std_logic_vector(31 downto 0);
+    cfg_mp_frac_bits      : out std_logic_vector(7 downto 0);
+    run_enable            : out std_logic;
+    soft_reset_pulse      : out std_logic
+  );
 end entity mstr_mmio;
 
 architecture rtl of mstr_mmio is
 
+  ID_CONST                : std_logic_vector(31 downto 0) := x"4D535452";
+  VERSION_CONST           : std_logic_vector(31 downto 0) := x"00010000";
+  signal reg_run_enable   : std_logic;
+  signal reg_pulse_reset  : std_logic;
+  -- Will change following to on reset behaviour, not := xxx
+  signal reg_bucket_ns    : std_logic_vector(31 downto 0) := x"000F4240"; -- 1000000 hex
+  signal reg_vwap_t_ns    : std_logic_vector(31 downto 0) := (others => '0');
+  signal reg_mp_frac_bits : std_logic_vector(7 downto 0) := x"08";
+
 begin
+
+
 
 end architecture rtl;

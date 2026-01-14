@@ -1,6 +1,6 @@
 library ieee;
 use ieee.std_logic_1164.all;
-use ieee.numeric_std.all
+use ieee.numeric_std.all;
 library std;
 use std.standard;
 
@@ -48,9 +48,9 @@ architecture rtl of mstr_mmio is
   signal reg_run_enable   : std_logic;
   signal reg_pulse_reset  : std_logic;
   -- Will change following to on reset behaviour, not := xxx
-  signal reg_bucket_ns    : std_logic_vector(31 downto 0) := x"000F4240"; -- 1000000 hex
-  signal reg_vwap_t_ns    : std_logic_vector(31 downto 0) := (others => '0');
-  signal reg_mp_frac_bits : std_logic_vector(7 downto 0) := x"08";
+  signal reg_bucket_ns    : std_logic_vector(31 downto 0);
+  signal reg_vwap_t_ns    : std_logic_vector(31 downto 0);
+  signal reg_mp_frac_bits : std_logic_vector(7 downto 0);
 
 begin
 
@@ -65,28 +65,33 @@ begin
           when "00011"      => avs_readdata <= (31 downto 1 => '0') & reg_run_enable; --subject to change
           when "00100"      => avs_readdata <= reg_bucket_ns;
           when "00101"      => avs_readdata <= reg_vwap_t_ns;
-          when "00110"      => avs_readdata <= reg_mp_frac_bits;
+          when "00110"      => avs_readdata <= (31 downto 8 => '0') & reg_mp_frac_bits;
           when others       => avs_readdata <= (others => '0');
         end case;
       end if;
     end if;
-  end process;
+  end process avalon_register_read;
 
   avalon_register_write : process(clk, rst)
   begin
     if rst = '1' then
-      reg_bucket_ns     := x"000F4240";
-      reg_vwap_t_ns     := (others => '0');
-      reg_mp_frac_bits  := x"08";
+      reg_bucket_ns     <= x"000F4240";
+      reg_vwap_t_ns     <= (others => '0');
+      reg_mp_frac_bits  <= x"08";
+      reg_run_enable    <= '0';
+      reg_pulse_reset   <= '0';
     elsif rising_edge(clk) then
       if avs_write = '1' then
         case address is
-          when "00010"      => avs_writedata <= reg_run_enable;
-          when "00100"      => avs_writedata <= reg_bucket_ns;
-          when "00101"      => avs_writedata <= reg_vwap_t_ns;
-          when "00110"      => avs_writedata <= reg_mp_frac_bits;
-          when others       => avs_writedata <= (others => '0');
+          when "00010"      =>
+            reg_run_enable                      <= avs_writedata;
+            reg_pulse_reset                     <= '1';
+          when "00100"      => reg_bucket_ns    <= avs_writedata;
+          when "00101"      => reg_vwap_t_ns    <= avs_writedata;
+          when "00110"      => reg_mp_frac_bits <= avs_writedata(7 downto 0);
+          when others       => null;
         end case;
       end if;
     end if;
+  end process avalon_register_write;
 end architecture rtl;

@@ -1,8 +1,7 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
-library std;
-use std.standard;
+
 
 -- Avalon-MM base address (HPS lightweight bridge):
 --   Base: 0x0017F400
@@ -25,73 +24,118 @@ use std.standard;
 
 entity mstr_mmio is
   port (
-    clk                   : in std_logic;
-    rst                   : in std_logic;
-    address               : in std_logic_vector(4 downto 0);
-    avs_read              : in std_logic;
-    avs_write             : in std_logic;
-    avs_writedata         : in std_logic_vector(31 downto 0);
-    avs_readdata          : out std_logic_vector(31 downto 0);
-    byteenable            : in std_logic_vector(3 downto 0);
-    cfg_bucket_ns         : out std_logic_vector(31 downto 0);
-    cfg_vwap_t_ns         : out std_logic_vector(31 downto 0);
-    cfg_mp_frac_bits      : out std_logic_vector(7 downto 0);
-    run_enable            : out std_logic;
-    soft_reset_pulse      : out std_logic
+    clk              : in  std_logic;
+    rst              : in  std_logic; -- active-high
+
+    address          : in  std_logic_vector(4 downto 0); -- word address
+    avs_read         : in  std_logic;
+    avs_write        : in  std_logic;
+    avs_writedata    : in  std_logic_vector(31 downto 0);
+    avs_readdata     : out std_logic_vector(31 downto 0);
+
+    cfg_bucket_ns    : out std_logic_vector(31 downto 0);
+    cfg_vwap_t_ns    : out std_logic_vector(31 downto 0);
+    cfg_mp_frac_bits : out std_logic_vector(7 downto 0);
+    run_enable       : out std_logic;
+    soft_reset_pulse : out std_logic
   );
 end entity mstr_mmio;
 
 architecture rtl of mstr_mmio is
 
-  constant ID_CONST       : std_logic_vector(31 downto 0) := x"4D535452";
-  constant VERSION_CONST  : std_logic_vector(31 downto 0) := x"00010000";
-  signal reg_run_enable   : std_logic;
-  signal reg_pulse_reset  : std_logic;
-  -- Will change following to on reset behaviour, not := xxx
-  signal reg_bucket_ns    : std_logic_vector(31 downto 0);
-  signal reg_vwap_t_ns    : std_logic_vector(31 downto 0);
-  signal reg_mp_frac_bits : std_logic_vector(7 downto 0);
+  constant ID_CONST      : std_logic_vector(31 downto 0) := x"4D535452"; -- "MSTR"
+  constant VERSION_CONST : std_logic_vector(31 downto 0) := x"00010000"; -- 1.0
+
+  signal reg_run_enable  : std_logic;
+  signal reg_pulse_reset : std_logic;
+
+  signal reg_bucket_ns   : std_logic_vector(31 downto 0);
+  signal reg_vwap_t_ns   : std_logic_vector(31 downto 0);
+  signal reg_mp_frac_bits: std_logic_vector(7 downto 0);
+
+  signal addr_i          : integer range 0 to 31;
 
 begin
 
-  avalon_register_read : process(clk)
-  begin
-    if rising_edge(clk) then
-      if avs_read = '1' then
-        case address is
-          when "00000"      => avs_readdata <= ID_CONST;
-          when "00001"      => avs_readdata <= VERSION_CONST;
-          when "00010"      => avs_readdata <= (31 downto 1 => '0') & reg_run_enable;
-          when "00011"      => avs_readdata <= (31 downto 1 => '0') & reg_run_enable; --subject to change
-          when "00100"      => avs_readdata <= reg_bucket_ns;
-          when "00101"      => avs_readdata <= reg_vwap_t_ns;
-          when "00110"      => avs_readdata <= (31 downto 8 => '0') & reg_mp_frac_bits;
-          when others       => avs_readdata <= (others => '0');
-        end case;
-      end if;
-    end if;
-  end process avalon_register_read;
+  addr_i <= to_integer(unsigned(address));
 
-  avalon_register_write : process(clk, rst)
+  -- Drive outputs
+  cfg_bucket_ns    <= reg_bucket_ns;
+  cfg_vwap_t_ns    <= reg_vwap_t_ns;
+  cfg_mp_frac_bits <= reg_mp_frac_bits;
+  run_enable       <= reg_run_enable;
+  soft_reset_pulse <= reg_pulse_reset;
+
+  -----------------------------------------------------------------------------
+  -- READ path
+  -----------------------------------------------------------------------------
+
+  process(clk, rst)
+    variable rd : std_logic_vector(31 downto 0);
   begin
     if rst = '1' then
-      reg_bucket_ns     <= x"000F4240";
-      reg_vwap_t_ns     <= (others => '0');
-      reg_mp_frac_bits  <= x"08";
-      reg_run_enable    <= '0';
-      reg_pulse_reset   <= '0';
+      avs_readdata <= (others => '0');
     elsif rising_edge(clk) then
+      rd := (others => '0');
+
+      if avs_read = '1' then
+        case addr_i is
+          when 0 => rd := ID_CONST;
+          when 1 => rd := VERSION_CONST;
+          when 2 => rd := (31 downto 1 => '0') & reg_run_enable; -- CTRL readback
+          when 3 => rd := (31 downto 3 => '0') & '1' & '0' & reg_run_enable; -- STATUS
+          when 4 => rd := reg_bucket_ns;
+          when 5 => rd := reg_vwap_t_ns;
+          when 6 => rd := (31 downto 8 => '0') & reg_mp_frac_bits;
+          when others => rd := (others => '0');
+        end case;
+      end if;
+
+      avs_readdata <= rd;
+    end if;
+  end process;
+
+
+  -----------------------------------------------------------------------------
+  -- WRITE path (sequential)
+  -----------------------------------------------------------------------------
+  process(clk, rst)
+  begin
+    if rst = '1' then
+      reg_bucket_ns    <= x"000F4240"; -- 1 ms in ns
+      reg_vwap_t_ns    <= (others => '0');
+      reg_mp_frac_bits <= x"08";
+      reg_run_enable   <= '0';
+      reg_pulse_reset  <= '0';
+
+    elsif rising_edge(clk) then
+      -- self-clear pulse
+      reg_pulse_reset <= '0';
+
       if avs_write = '1' then
-        case address is
-          when "00010"      =>
-            reg_run_enable                      <= avs_writedata;
-            reg_pulse_reset                     <= '1';
-          when "00100"      => reg_bucket_ns    <= avs_writedata;
-          when "00101"      => reg_vwap_t_ns    <= avs_writedata;
-          when "00110"      => reg_mp_frac_bits <= avs_writedata(7 downto 0);
-          when others       => null;
+        case addr_i is
+          when 2 => -- CTRL: bit0 START, bit1 STOP, bit2 RESET
+            if avs_writedata(2) = '1' then
+              reg_pulse_reset <= '1';
+              reg_run_enable  <= '0';
+            end if;
+
+            if avs_writedata(0) = '1' then
+              reg_run_enable <= '1';
+            end if;
+
+            if avs_writedata(1) = '1' then
+              reg_run_enable <= '0';
+            end if;
+
+          when 4 => reg_bucket_ns    <= avs_writedata;
+          when 5 => reg_vwap_t_ns    <= avs_writedata;
+          when 6 => reg_mp_frac_bits <= avs_writedata(7 downto 0);
+
+          when others => null;
         end case;
       end if;
     end if;
-  end process avalon_register_write;
+  end process;
+
 end architecture rtl;

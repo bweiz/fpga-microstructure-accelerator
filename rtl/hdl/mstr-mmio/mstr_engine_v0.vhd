@@ -20,11 +20,67 @@ end entity;
 
 architecture arch of mstr_engine_v0 is
 
+  constant FCLK_HZ         : integer := 50_000_000;   -- 50 MHz clock
+  constant NS_PER_SEC      : integer := 1_000_000_000;
+  signal bucket_ns_u32     : unsigned(31 downto 0);
+  signal prod_u64          : unsigned(63 downto 0);
+  signal cycles_u64        : unsigned(63 downto 0);   -- Avoid overflow
+  signal bucket_cycles     : unsigned(31 downto 0);
+
+  signal cycle_count       : unsigned(31 downto 0);
+  signal buckets_count_reg : unsigned(31 downto 0);
+  signal init_done_reg     : std_logic;
+
 begin
+
+  -- Convert and compute cycles
+  bucket_ns_u32 <= unsigned(cfg_bucket_ns);
+  prod_u64      <= resize(bucket_ns_u32, 64) * to_unsigned(FCLK_HZ, 64);
+  cycles_u64    <= prod_u64 / to_unsigned(NS_PER_SEC, 64);
+
+  -- Clamp bucket_cycles to >= 1
+  process(all)
+  begin
+    if cycles_u64 = 0 then
+      bucket_cycles <= to_unsigned(1, 32);
+    else
+      bucket_cycles <= resize(cycles_u64, 32); -- take low 32 bits
+    end if;
+  end process;
+
+
+  -- State Update
+  process(clk, rst)
+  begin
+
+    if rst = '1' then
+      cycle_count       <= (others => '0');
+      buckets_count_reg <= (others => '0');
+      init_done_reg     <= '0';
+    elsif rising_edge(clk) then
+      init_done_reg <= '1';
+
+      if soft_pulse_reset = '1' then
+        cycle_count       <= (others => '0');
+        buckets_count_reg <= (others => '0');
+
+      elsif run_enable = '1' then
+        if cycle_count = bucket_cycles - 1 then
+          cycle_count       <= (others => '0');
+          buckets_count_reg <= buckets_count_reg + 1;
+        else
+          cycle_count <= cycle_count + 1;
+        end if;
+
+      else
+        cycle_count <= (others => '0');
+      end if;
+    end if;
+  end process;
 
   status_running   <= run_enable;
   status_error     <= '0';
-  status_init_done <= '1';
-  buckets_out_lo   <= (others => '0');
+  status_init_done <= init_done_reg;
+  buckets_out_lo   <= std_logic_vector(buckets_count_reg);
 
 end architecture arch;

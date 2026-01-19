@@ -43,28 +43,32 @@ end entity mstr_mmio;
 
 architecture rtl of mstr_mmio is
 
-  constant ID_CONST         : std_logic_vector(31 downto 0) := x"4D535452"; -- "MSTR"
-  constant VERSION_CONST    : std_logic_vector(31 downto 0) := x"00010000"; -- 1.0
+  constant ID_CONST            : std_logic_vector(31 downto 0) := x"4D535452"; -- "MSTR"
+  constant VERSION_CONST       : std_logic_vector(31 downto 0) := x"00010000"; -- 1.0
 
-  signal r_run_enable       : std_logic;
-  signal r_pulse_reset      : std_logic;
-  signal r_bucket_ns        : std_logic_vector(31 downto 0);
-  signal r_vwap_t_ns        : std_logic_vector(31 downto 0);
-  signal r_mp_frac_bits     : std_logic_vector(7 downto 0);
+  signal r_run_enable          : std_logic;
+  signal r_pulse_reset         : std_logic;
+  signal r_bucket_ns           : std_logic_vector(31 downto 0);
+  signal r_vwap_t_ns           : std_logic_vector(31 downto 0);
+  signal r_mp_frac_bits        : std_logic_vector(7 downto 0);
 
-  signal addr_i             : integer range 0 to 31;
+  signal addr_i                : integer range 0 to 31;
 
 
-  signal wr_en              : std_logic;
-  signal wr_addr            : integer range 0 to 31;
-  signal wr_data            : std_logic_vector(31 downto 0);
+  signal wr_en                 : std_logic;
+  signal wr_addr               : integer range 0 to 31;
+  signal wr_data               : std_logic_vector(31 downto 0);
 
-  signal e_status_running   : std_logic;
-  signal e_status_error     : std_logic;
-  signal e_status_init_done : std_logic;
-  signal e_buckets_out_lo   : std_logic_vector(31 downto 0);
-  signal status_word        : std_logic_vector(31 downto 0);
-  signal buckets_out_lo     : std_logic_vector(31 downto 0);
+  signal e_status_running      : std_logic;
+  signal e_status_error        : std_logic;
+  signal e_status_init_done    : std_logic;
+  signal e_buckets_out_lo      : std_logic_vector(31 downto 0);
+  signal e_cycles_running_lo   : std_logic_vector(31 downto 0);
+  signal e_last_bucket_cycles  : std_logic_vector(31 downto 0);
+  signal e_soft_reset_count_lo : std_logic_vector(31 downto 0);
+
+  signal status_word           : std_logic_vector(31 downto 0);
+  signal buckets_out_lo        : std_logic_vector(31 downto 0);
 
 begin
 
@@ -91,15 +95,18 @@ begin
 
   u_engine : entity work.mstr_engine_v0
     port map (
-    clk               => clk,
-    rst               => rst,
-    run_enable        => r_run_enable,
-    soft_pulse_reset  => r_pulse_reset,
-    cfg_bucket_ns     => r_bucket_ns,
-    status_running    => e_status_running,
-    status_error      => e_status_error,
-    status_init_done  => e_status_init_done,
-    buckets_out_lo    => e_buckets_out_lo
+    clk                 => clk,
+    rst                 => rst,
+    run_enable          => r_run_enable,
+    soft_pulse_reset    => r_pulse_reset,
+    cfg_bucket_ns       => r_bucket_ns,
+    status_running      => e_status_running,
+    status_error        => e_status_error,
+    status_init_done    => e_status_init_done,
+    buckets_out_lo      => e_buckets_out_lo,
+    cycles_running_lo   => e_cycles_running_lo,
+    last_bucket_cycle   => e_last_bucket_cycles,
+    soft_reset_count_lo => e_soft_reset_count_lo
     );
 
   cfg_bucket_ns      <= r_bucket_ns;
@@ -136,6 +143,9 @@ begin
           when 5 => rd := r_vwap_t_ns;
           when 6 => rd := (31 downto 8 => '0') & r_mp_frac_bits;
           when 19 => rd := buckets_out_lo;
+          when 20 => rd := e_cycles_running_lo;
+          when 21 => rd := e_last_bucket_cycles;
+          when 22 => rd := e_soft_reset_count_lo;
           when others => rd := (others => '0');
         end case;
       end if;

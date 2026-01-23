@@ -17,10 +17,10 @@ It will later evolve to include DMA orchestration for the data plane (DDR rings)
 ## Register Base / Span
 
 ### Base address
-**Base address:** `0x0017F400` *(example placeholder from coursework; actual base comes from Platform Designer address map / device tree)*
+**Base address:** `0x0017F400` *(placeholder from coursework; actual base subject to change)*
 
 ### Span
-**Span (LOCKED):** `0x50` bytes (**80 bytes**)
+**Span (LOCKED):** `0x60` bytes 
 
 
 ---
@@ -85,6 +85,9 @@ Offset | Name | R/W | Reset | Description
 0x44 | `EVENTS_IN` | R | 0 | Number of events consumed from event ring
 0x48 | `EVENTS_DROPPED_OOO` | R | 0 | Dropped events due to out-of-order `ts`
 0x4C | `BUCKETS_OUT` | R | 0 | Number of bucket records produced
+0x50 | CYCLES_RUNNING_LO | R | 0 | Increments every FPGA clock while RUNNING=1
+0x54 | LAST_BUCKET_CYCLES | R | 0 | Captured cycles-per-bucket at last bucket boundary
+0x58 | SOFT_RESET_COUNT | R | 0 | Increments on each CTRL.RESET (soft reset pulse); clears on hard rst
 
 > Optional extensions:
 > - `IN_FIFO_HIWATER`, `OUT_FIFO_HIWATER`, `RING_OVERRUNS`, `STALL_CYCLES`, etc.

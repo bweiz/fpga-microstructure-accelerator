@@ -249,8 +249,7 @@ architecture de10nano_arch of de10nano_top is
       memory_mem_dm                   : out   std_logic_vector(3 downto 0);
       memory_oct_rzqin                : in    std_logic;
       clk_clk                         : in    std_logic;
-      reset_reset_n                   : in    std_logic;
-      mstr_mmio_tmp_external_connection_export : out   std_logic_vector(31 downto 0)
+      reset_reset_n                   : in    std_logic
     );
   end component soc_system;
 

@@ -72,3 +72,26 @@ hw/quartus/hps_isw_handoff/
 *.cdf
 *.bak
 
+# Build artifacts
+/build/
+# GHDL artifacts (just in case)
+work-obj*.cf
+*.cf
+
+# Quartus build junk
+rtl/quartus/db/
+rtl/quartus/incremental_db/
+rtl/quartus/output_files/
+rtl/quartus/.qsys_edit/
+rtl/quartus/*.qws
+rtl/quartus/*.qdf
+rtl/quartus/*.rpt
+rtl/quartus/*.summary
+rtl/quartus/*.smsg
+rtl/quartus/*.qmsg
+rtl/quartus/*.sof
+rtl/quartus/*.pof
+
+# OS junk
+.DS_Store
+Thumbs.db

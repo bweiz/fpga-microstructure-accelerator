@@ -38,7 +38,7 @@
          type = "int";
       }
    }
-   element mstr_mmio_tmp
+   element mstr_mmio_avalon_0
    {
       datum _sortIndex
       {
@@ -46,11 +46,24 @@
          type = "int";
       }
    }
-   element mstr_mmio_tmp.s1
+   element mstr_mmio_avalon_0.mstr_mmio_avalon
    {
+      datum _lockedAddress
+      {
+         value = "1";
+         type = "boolean";
+      }
       datum baseAddress
       {
          value = "1569792";
+         type = "String";
+      }
+   }
+   element soc_system
+   {
+      datum _originalDeviceFamily
+      {
+         value = "Cyclone V";
          type = "String";
       }
    }
@@ -395,11 +408,6 @@
  <interface name="hps_spim0" internal="hps.spim0" />
  <interface name="hps_spim0_sclk_out" internal="hps.spim0_sclk_out" />
  <interface name="memory" internal="hps.memory" type="conduit" dir="end" />
- <interface
-   name="mstr_mmio_tmp_external_connection"
-   internal="mstr_mmio_tmp.external_connection"
-   type="conduit"
-   dir="end" />
  <interface name="reset" internal="fpga_clk.clk_in_reset" type="reset" dir="end" />
  <module name="fpga_clk" kind="clock_source" version="24.1" enabled="1">
   <parameter name="clockFrequency" value="50000000" />
@@ -952,28 +960,15 @@
   <parameter name="USE_PLI" value="0" />
  </module>
  <module
-   name="mstr_mmio_tmp"
-   kind="altera_avalon_pio"
-   version="24.1"
-   enabled="1">
-  <parameter name="bitClearingEdgeCapReg" value="false" />
-  <parameter name="bitModifyingOutReg" value="false" />
-  <parameter name="captureEdge" value="false" />
-  <parameter name="clockRate" value="50000000" />
-  <parameter name="direction" value="Output" />
-  <parameter name="edgeType" value="RISING" />
-  <parameter name="generateIRQ" value="false" />
-  <parameter name="irqType" value="LEVEL" />
-  <parameter name="resetValue" value="0" />
-  <parameter name="simDoTestBenchWiring" value="false" />
-  <parameter name="simDrivenValue" value="0" />
-  <parameter name="width" value="32" />
- </module>
+   name="mstr_mmio_avalon_0"
+   kind="mstr_mmio_avalon"
+   version="1.0"
+   enabled="1" />
  <connection
    kind="avalon"
    version="24.1"
    start="hps.h2f_lw_axi_master"
-   end="mstr_mmio_tmp.s1">
+   end="mstr_mmio_avalon_0.mstr_mmio_avalon">
   <parameter name="arbitrationPriority" value="1" />
   <parameter name="baseAddress" value="0x0017f400" />
   <parameter name="defaultConnection" value="false" />
@@ -982,7 +977,7 @@
    kind="avalon"
    version="24.1"
    start="jtag_master.master"
-   end="mstr_mmio_tmp.s1">
+   end="mstr_mmio_avalon_0.mstr_mmio_avalon">
   <parameter name="arbitrationPriority" value="1" />
   <parameter name="baseAddress" value="0x0017f400" />
   <parameter name="defaultConnection" value="false" />
@@ -996,7 +991,7 @@
    kind="clock"
    version="24.1"
    start="fpga_clk.clk"
-   end="mstr_mmio_tmp.clk" />
+   end="mstr_mmio_avalon_0.clock" />
  <connection
    kind="clock"
    version="24.1"
@@ -1011,7 +1006,7 @@
    kind="reset"
    version="24.1"
    start="fpga_clk.clk_reset"
-   end="mstr_mmio_tmp.reset" />
+   end="mstr_mmio_avalon_0.reset" />
  <interconnectRequirement for="$system" name="qsys_mm.clockCrossingAdapter" value="HANDSHAKE" />
  <interconnectRequirement for="$system" name="qsys_mm.maxAdditionalLatency" value="1" />
 </system>

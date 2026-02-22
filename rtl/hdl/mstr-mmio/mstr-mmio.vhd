@@ -136,7 +136,7 @@ begin
           when 5  => rd := r_vwap_t_ns;
           when 6  => rd := (31 downto 8 => '0') & r_mp_frac_bits;
 
-          -- Debug snapshot regs (your existing mapping)
+          -- Debug snapshot regs
           when 19 => rd := e_buckets_out_lo;
           when 20 => rd := e_cycles_running_lo;
           when 21 => rd := e_last_bucket_cycles_lo;

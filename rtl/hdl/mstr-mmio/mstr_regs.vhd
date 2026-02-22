@@ -64,7 +64,7 @@ begin
 
       reg_run_enable   <= '0';
       reg_reset_pulse  <= '0';
-		
+
     elsif rising_edge(clk) then
       -- self-clear the 1-cycle pulse
       reg_reset_pulse <= '0';
@@ -94,7 +94,7 @@ begin
 
           when 6 =>  -- MP_FRAC_BITS
             reg_mp_frac_bits <= wr_data(7 downto 0);
-				
+
 			 when 7 =>  -- SNAPSHOT
 				if wr_data(0) = '1' then
 				  reg_snapshot_pulse <= '1';
